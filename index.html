@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-u8SyDF6kKCR8H9j85lUFya/QDOLVwUWZybTKZQXemL4='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Sj8hQTDgTHmXVNfp4/sS0hpt71ywl+NEOTjKtU6fWHU='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <title>Baixar arquivo · P-71 PP</title>
@@ -144,8 +144,20 @@ footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--linha);font-s
     var t = Date.UTC(+a[0], +a[1] - 1, +a[2]);
     return isNaN(t) ? null : (t - Date.UTC(1899, 11, 30)) / 86400000;
   }
-  function celula(ref, v, cinza) {
+  /* Formato de número igual ao da aba PCS (lido da planilha em 10/11/2026). Coluna
+     nova com "%" no título sai como porcentagem; com "Kg" no título, com "kg" ao lado. */
+  var FORMATOS = { '% Atendida Estrutural': '0.0%', '% Atendida BR': '0%', '% Atendida Total': '0.0%',
+    '% Real Fabr.': '0%', '% Pint.': '0%', 'Kg Previsto': '#,##0.00 "kg"', 'Kg Real': '#,##0.00 "kg"', 'Ano': '0' };
+  function formatoDaColuna(t) {
+    t = String(t || '').replace(/\s+/g, ' ').trim();
+    if (FORMATOS[t]) return FORMATOS[t];
+    if (/^%/.test(t) || /\(%\)/.test(t)) return '0%';
+    if (/^kg\b/i.test(t) || /\(kg\)/i.test(t)) return '#,##0.00 "kg"';
+    return null;
+  }
+  function celula(ref, v, cinza, fk) {
     var sc = cinza ? '4' : '2', sd = cinza ? '5' : '3';
+    if (fk >= 0 && typeof v === 'number' && isFinite(v)) return '<c r="' + ref + '" s="' + (6 + 2 * fk + (cinza ? 1 : 0)) + '"><v>' + v + '</v></c>';
     if (v === null || v === undefined || v === '') return '<c r="' + ref + '" s="' + sc + '"/>';
     if (typeof v === 'number' && isFinite(v)) return '<c r="' + ref + '" s="' + sc + '"><v>' + v + '</v></c>';
     if (typeof v === 'boolean') v = v ? 'Sim' : 'Não';
@@ -156,6 +168,20 @@ footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--linha);font-s
   }
   function gerarXlsx(t) {
     var cols = t.colunas, linhas = t.linhas, ult = letra(cols.length - 1), fimRef = ult + (linhas.length + 1);
+    var FMTS = [];
+    var fmtCol = cols.map(function (c, i) {
+      var f = formatoDaColuna(c.titulo);
+      if (!f) return -1;
+      if (/%$/.test(f)) {
+        /* a PCS guarda porcentagem como fração (0,67 = 67%); se vier 0–100, converte */
+        var max = 0;
+        linhas.forEach(function (l) { if (typeof l[i] === 'number' && l[i] > max) max = l[i]; });
+        if (max > 1.5) linhas.forEach(function (l) { if (typeof l[i] === 'number') l[i] = l[i] / 100; });
+      }
+      var k = FMTS.indexOf(f);
+      if (k < 0) { FMTS.push(f); k = FMTS.length - 1; }
+      return k;
+    });
     var larg = cols.map(function (c, i) {
       var max = Math.min(String(c.titulo || '').length, 18);
       for (var r = 0; r < linhas.length && r < 400; r++) {
@@ -178,7 +204,7 @@ footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--linha);font-s
     x.push('</row>');
     linhas.forEach(function (l, r) {
       x.push('<row r="' + (r + 2) + '" ht="33.6" customHeight="1">');
-      cols.forEach(function (_, i) { x.push(celula(letra(i) + (r + 2), l[i], r % 2 === 1)); });
+      cols.forEach(function (_, i) { x.push(celula(letra(i) + (r + 2), l[i], r % 2 === 1, fmtCol[i])); });
       x.push('</row>');
     });
     x.push('</sheetData><autoFilter ref="A1:' + fimRef + '"/><pageMargins left="0.5" right="0.5" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>');
@@ -187,19 +213,26 @@ footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--linha);font-s
     var borda = '<border><left style="thin"><color indexed="64"/></left><right style="thin"><color indexed="64"/></right><top style="thin"><color indexed="64"/></top><bottom style="thin"><color indexed="64"/></bottom><diagonal/></border>';
     var fonte = '<sz val="11"/><color rgb="FF000000"/><name val="Aptos Narrow"/><family val="2"/>';
     var estilos = cab + '<styleSheet ' + ns + '>' +
+      (FMTS.length ? '<numFmts count="' + FMTS.length + '">' + FMTS.map(function (f, k) {
+        return '<numFmt numFmtId="' + (164 + k) + '" formatCode="' + esc(f) + '"/>'; }).join('') + '</numFmts>' : '') +
       '<fonts count="3"><font>' + fonte + '</font><font><b/>' + fonte + '</font>' +
       '<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Aptos Narrow"/><family val="2"/></font></fonts>' +
       '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
       '<fill><patternFill patternType="solid"><fgColor rgb="FF3F5B70"/><bgColor indexed="64"/></patternFill></fill>' +
       '<fill><patternFill patternType="solid"><fgColor rgb="FFD9D9D9"/><bgColor indexed="64"/></patternFill></fill></fills>' +
       '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' + borda + '</borders>' +
-      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6">' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="' + (6 + 2 * FMTS.length) + '">' +
       '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
       '<xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
       '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
       '<xf numFmtId="14" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
       '<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
       '<xf numFmtId="14" fontId="0" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+      FMTS.map(function (f, k) {
+        return [0, 3].map(function (fill) {
+          return '<xf numFmtId="' + (164 + k) + '" fontId="0" fillId="' + fill + '" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>';
+        }).join('');
+      }).join('') +
       '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
     return zip([
       ['[Content_Types].xml', cab + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
