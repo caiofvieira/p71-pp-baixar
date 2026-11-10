@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-dsfMDflC8cIl3/KXnFpGdo+ox3bONe9M8CJGhsSOgaI='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>Baixar arquivo · P-71 PP</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--fundo:#f4f4f5;--cartao:#fff;--texto:#18181b;--suave:#5f5f68;--linha:#e4e4e7;--marca:#c8202a;--ok:#15803d}
+@media (prefers-color-scheme:dark){:root{--fundo:#111113;--cartao:#1c1c1f;--texto:#f4f4f5;--suave:#a1a1aa;--linha:#2e2e33;--marca:#e5484d;--ok:#22a05a}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--fundo);color:var(--texto);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;display:flex;align-items:center;justify-content:center;padding:16px}
+main{width:100%;max-width:460px;background:var(--cartao);border:1px solid var(--linha);border-top:4px solid var(--marca);border-radius:10px;padding:26px 26px 20px}
+.selo{margin:0 0 14px;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--suave)}
+h1{margin:0 0 8px;font-size:19px;line-height:1.3;display:flex;align-items:center;gap:10px}
+.icone{flex:none;width:22px;height:22px;border-radius:50%;display:inline-grid;place-items:center;font-size:13px;font-weight:700;color:#fff}
+[data-estado="carregando"] .icone{border:3px solid var(--linha);border-top-color:var(--marca);animation:gira .8s linear infinite}
+[data-estado="ok"] .icone{background:var(--ok)}
+[data-estado="ok"] .icone::before{content:"\2713"}
+[data-estado="permissao"] .icone,[data-estado="colar"] .icone,[data-estado="vazio"] .icone{background:var(--marca)}
+[data-estado="permissao"] .icone::before,[data-estado="colar"] .icone::before,[data-estado="vazio"] .icone::before{content:"!"}
+@keyframes gira{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){[data-estado="carregando"] .icone{animation-duration:2.4s}}
+#texto{margin:0;color:var(--suave);overflow-wrap:anywhere}
+[data-estado="ok"] #texto{color:var(--texto);font-weight:600}
+button{margin-top:16px;font:inherit;font-weight:600;border:0;border-radius:8px;padding:9px 16px;background:var(--marca);color:#fff;cursor:pointer}
+button:focus-visible{outline:3px solid var(--texto);outline-offset:2px}
+button[hidden]{display:none}
+#dica{margin:12px 0 0;font-size:13px;color:var(--suave)}
+#dica:empty{display:none}
+footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--linha);font-size:12px;color:var(--suave)}
+</style>
+</head>
+<body data-estado="carregando">
+<main>
+<p class="selo">Dashboard P-71 PP</p>
+<h1><span class="icone" aria-hidden="true"></span><span id="titulo">Preparando o arquivo…</span></h1>
+<p id="texto" aria-live="polite"></p>
+<button id="botao" type="button" hidden>Tentar de novo</button>
+<p id="dica"></p>
+<footer>O arquivo é montado aqui mesmo, no seu computador, com a tabela que o dashboard copiou. Esta página não envia nada para lugar nenhum.</footer>
+</main>
+<script>
+(function () {
+  'use strict';
+  var MARCA = '##P71PP-CSV##';
+  var VALIDADE_MS = 15 * 60 * 1000;
+  var feito = false;
+  function el(id) { return document.getElementById(id); }
+
+  function mostrar(estado, titulo, texto, dica) {
+    document.body.setAttribute('data-estado', estado);
+    el('titulo').textContent = titulo;
+    el('texto').textContent = texto || '';
+    el('dica').textContent = dica || '';
+    el('botao').hidden = !(estado === 'colar' || estado === 'vazio');
+    document.title = (estado === 'ok' ? 'Baixado' : 'Baixar arquivo') + ' · P-71 PP';
+  }
+
+  /* Primeira linha: "##P71PP-CSV## <hora em ms> <nome do arquivo>"; o resto é o CSV. */
+  function interpretar(conteudo) {
+    if (typeof conteudo !== 'string' || conteudo.indexOf(MARCA + ' ') !== 0) return null;
+    var fim = conteudo.indexOf('\n');
+    if (fim < 0) return null;
+    var m = /^(\d{12,14}) (.+)$/.exec(conteudo.slice(MARCA.length + 1, fim).replace(/\r$/, ''));
+    if (!m) return null;
+    var idade = Date.now() - Number(m[1]);
+    if (idade > VALIDADE_MS || idade < -300000) return { velho: true };
+    var nome = m[2].normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[\\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/\s+/g, ' ').trim() || 'P-71 PP';
+    if (!/\.csv$/i.test(nome)) nome += '.csv';
+    return { nome: nome, csv: conteudo.slice(fim + 1) };
+  }
+
+  function salvar(p) {
+    var url = URL.createObjectURL(new Blob(['﻿', p.csv], { type: 'text/csv;charset=utf-8' }));
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = p.nome;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  }
+
+  function fechar() {
+    window.close();
+    setTimeout(function () { el('dica').textContent = 'Pode fechar esta guia.'; }, 500);
+  }
+
+  /* Se o navegador abriu a janela "Salvar como", a guia perde o foco: espera ela
+     voltar para fechar, para não atrapalhar a escolha da pasta. */
+  function fecharQuandoPuder() {
+    setTimeout(function () {
+      if (document.hasFocus()) fechar();
+      else window.addEventListener('focus', function () { setTimeout(fechar, 400); }, { once: true });
+    }, 1500);
+  }
+
+  function tratar(conteudo) {
+    if (feito) return true;
+    var p = interpretar(conteudo);
+    if (p && !p.velho) {
+      feito = true;
+      salvar(p);
+      mostrar('ok', 'Arquivo baixado', p.nome, 'Esta guia fecha sozinha.');
+      fecharQuandoPuder();
+      return true;
+    }
+    mostrar('vazio', p ? 'A tabela copiada é antiga' : 'Não achei a tabela do dashboard',
+      'Volte ao dashboard e clique de novo no botão de baixar.');
+    return false;
+  }
+
+  function pedirColar() {
+    if (feito) return;
+    mostrar('colar', 'Aperte Ctrl+V para baixar',
+      'O navegador não deixou esta página ler sozinha a tabela que o dashboard copiou. Com Ctrl+V aqui, o arquivo sai na hora.');
+  }
+
+  function ler() {
+    if (feito) return;
+    if (!navigator.clipboard || !navigator.clipboard.readText) { pedirColar(); return; }
+    var aviso = setTimeout(function () {
+      if (!feito) mostrar('permissao', 'Falta uma autorização, só desta vez',
+        'O navegador está perguntando se esta página pode ver o que foi copiado. Clique em Permitir: é assim que a tabela do dashboard chega aqui.');
+    }, 400);
+    navigator.clipboard.readText().then(
+      function (t) { clearTimeout(aviso); tratar(t); },
+      function () { clearTimeout(aviso); pedirColar(); });
+  }
+
+  document.addEventListener('paste', function (e) {
+    var t = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+    e.preventDefault();
+    tratar(t);
+  });
+  el('botao').addEventListener('click', ler);
+  if (document.hasFocus()) ler();
+  else window.addEventListener('focus', ler, { once: true });
+})();
+</script>
+</body>
+</html>
