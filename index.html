@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-CrxJDdBugxVGrSU7Y4cR+jqSb++/UBLFQLmKxu7DexU='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-HDwLIjPwgjgM5R5g/q741MkYkDWDtGbnjQbgLk0Ffmk='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <title>Baixar arquivo · P-71 PP</title>
@@ -87,7 +87,7 @@ footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--linha);font-s
   /* ---------- planilha .xlsx com a identidade da aba PCS ----------
      Cabeçalho: Aptos Narrow 11 negrito, fundo #3F5B70, centralizado, quebra de
      texto, altura 67,9. Linhas: Aptos Narrow 11, centralizadas, altura 33,6.
-     Borda fina em todas as células. Cabeçalho congelado, filtro, zoom 90%. */
+     Borda fina em todas as células; linhas alternadas cinza #D9D9D9 / branco, como as faixas da tabela da PCS (TableStyleMedium1). Cabeçalho congelado, filtro, zoom 90%. */
   var CRC = (function () {
     var t = new Uint32Array(256);
     for (var n = 0; n < 256; n++) {
@@ -144,14 +144,15 @@ footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--linha);font-s
     var t = Date.UTC(+a[0], +a[1] - 1, +a[2]);
     return isNaN(t) ? null : (t - Date.UTC(1899, 11, 30)) / 86400000;
   }
-  function celula(ref, v) {
-    if (v === null || v === undefined || v === '') return '<c r="' + ref + '" s="2"/>';
-    if (typeof v === 'number' && isFinite(v)) return '<c r="' + ref + '" s="2"><v>' + v + '</v></c>';
+  function celula(ref, v, cinza) {
+    var sc = cinza ? '4' : '2', sd = cinza ? '5' : '3';
+    if (v === null || v === undefined || v === '') return '<c r="' + ref + '" s="' + sc + '"/>';
+    if (typeof v === 'number' && isFinite(v)) return '<c r="' + ref + '" s="' + sc + '"><v>' + v + '</v></c>';
     if (typeof v === 'boolean') v = v ? 'Sim' : 'Não';
     v = String(v);
     var d = serialData(v);
-    if (d !== null) return '<c r="' + ref + '" s="3"><v>' + d + '</v></c>';
-    return '<c r="' + ref + '" s="2" t="inlineStr"><is><t xml:space="preserve">' + esc(v) + '</t></is></c>';
+    if (d !== null) return '<c r="' + ref + '" s="' + sd + '"><v>' + d + '</v></c>';
+    return '<c r="' + ref + '" s="' + sc + '" t="inlineStr"><is><t xml:space="preserve">' + esc(v) + '</t></is></c>';
   }
   function gerarXlsx(t) {
     var cols = t.colunas, linhas = t.linhas, ult = letra(cols.length - 1), fimRef = ult + (linhas.length + 1);
@@ -177,7 +178,7 @@ footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--linha);font-s
     x.push('</row>');
     linhas.forEach(function (l, r) {
       x.push('<row r="' + (r + 2) + '" ht="33.6" customHeight="1">');
-      cols.forEach(function (_, i) { x.push(celula(letra(i) + (r + 2), l[i])); });
+      cols.forEach(function (_, i) { x.push(celula(letra(i) + (r + 2), l[i], r % 2 === 1)); });
       x.push('</row>');
     });
     x.push('</sheetData><autoFilter ref="A1:' + fimRef + '"/><pageMargins left="0.5" right="0.5" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>');
@@ -187,14 +188,17 @@ footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--linha);font-s
     var fonte = '<sz val="11"/><color rgb="FF000000"/><name val="Aptos Narrow"/><family val="2"/>';
     var estilos = cab + '<styleSheet ' + ns + '>' +
       '<fonts count="2"><font>' + fonte + '</font><font><b/>' + fonte + '</font></fonts>' +
-      '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
-      '<fill><patternFill patternType="solid"><fgColor rgb="FF3F5B70"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+      '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FF3F5B70"/><bgColor indexed="64"/></patternFill></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFD9D9D9"/><bgColor indexed="64"/></patternFill></fill></fills>' +
       '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' + borda + '</borders>' +
-      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4">' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6">' +
       '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
       '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
       '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
       '<xf numFmtId="14" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+      '<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
+      '<xf numFmtId="14" fontId="0" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
       '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
     return zip([
       ['[Content_Types].xml', cab + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
