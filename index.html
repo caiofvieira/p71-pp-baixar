@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-dsfMDflC8cIl3/KXnFpGdo+ox3bONe9M8CJGhsSOgaI='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-CrxJDdBugxVGrSU7Y4cR+jqSb++/UBLFQLmKxu7DexU='; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <title>Baixar arquivo · P-71 PP</title>
@@ -47,8 +47,9 @@ footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--linha);font-s
 <script>
 (function () {
   'use strict';
-  var MARCA = '##P71PP-CSV##';
+  var MARCAS = { '##P71PP-XLSX##': 'xlsx', '##P71PP-CSV##': 'csv' };
   var VALIDADE_MS = 15 * 60 * 1000;
+  var BOM = String.fromCharCode(0xFEFF);
   var feito = false;
   function el(id) { return document.getElementById(id); }
 
@@ -61,23 +62,154 @@ footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--linha);font-s
     document.title = (estado === 'ok' ? 'Baixado' : 'Baixar arquivo') + ' · P-71 PP';
   }
 
-  /* Primeira linha: "##P71PP-CSV## <hora em ms> <nome do arquivo>"; o resto é o CSV. */
+  /* 1ª linha: "<marca> <hora em ms> <nome do arquivo>"; o resto é a tabela
+     (JSON {colunas, linhas} na marca XLSX; CSV pronto na marca CSV, antiga). */
   function interpretar(conteudo) {
-    if (typeof conteudo !== 'string' || conteudo.indexOf(MARCA + ' ') !== 0) return null;
+    if (typeof conteudo !== 'string') return null;
     var fim = conteudo.indexOf('\n');
     if (fim < 0) return null;
-    var m = /^(\d{12,14}) (.+)$/.exec(conteudo.slice(MARCA.length + 1, fim).replace(/\r$/, ''));
+    var m = /^(##P71PP-(?:XLSX|CSV)##) (\d{12,14}) (.+)$/.exec(conteudo.slice(0, fim).replace(/\r$/, ''));
     if (!m) return null;
-    var idade = Date.now() - Number(m[1]);
+    var idade = Date.now() - Number(m[2]);
     if (idade > VALIDADE_MS || idade < -300000) return { velho: true };
-    var nome = m[2].normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/[\\\/:*?"<>|\u0000-\u001f]+/g, '-').replace(/\s+/g, ' ').trim() || 'P-71 PP';
-    if (!/\.csv$/i.test(nome)) nome += '.csv';
-    return { nome: nome, csv: conteudo.slice(fim + 1) };
+    var tipo = MARCAS[m[1]];
+    var nome = m[3].normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[\\\/:*?"<>|\x00-\x1f]+/g, '-').replace(/\s+/g, ' ').trim()
+      .replace(/\.(csv|xlsx)$/i, '') || 'P-71 PP';
+    var corpo = conteudo.slice(fim + 1);
+    if (tipo === 'xlsx') {
+      try { corpo = JSON.parse(corpo); } catch (_) { return null; }
+      if (!corpo || !corpo.colunas || !corpo.linhas) return null;
+    }
+    return { tipo: tipo, nome: nome + '.' + tipo, corpo: corpo };
+  }
+
+  /* ---------- planilha .xlsx com a identidade da aba PCS ----------
+     Cabeçalho: Aptos Narrow 11 negrito, fundo #3F5B70, centralizado, quebra de
+     texto, altura 67,9. Linhas: Aptos Narrow 11, centralizadas, altura 33,6.
+     Borda fina em todas as células. Cabeçalho congelado, filtro, zoom 90%. */
+  var CRC = (function () {
+    var t = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(b) {
+    var c = -1;
+    for (var i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 255] ^ (c >>> 8);
+    return (c ^ -1) >>> 0;
+  }
+  function zip(arquivos) {
+    var enc = new TextEncoder(), partes = [], central = [], pos = 0;
+    arquivos.forEach(function (f) {
+      var nm = enc.encode(f[0]), d = enc.encode(f[1]), crc = crc32(d);
+      var h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true);
+      h.setUint16(12, 0x21, true); h.setUint32(14, crc, true); h.setUint32(18, d.length, true);
+      h.setUint32(22, d.length, true); h.setUint16(26, nm.length, true);
+      partes.push(new Uint8Array(h.buffer), nm, d);
+      var c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true);
+      c.setUint16(8, 0x0800, true); c.setUint16(14, 0x21, true); c.setUint32(16, crc, true);
+      c.setUint32(20, d.length, true); c.setUint32(24, d.length, true); c.setUint16(28, nm.length, true);
+      c.setUint32(42, pos, true);
+      central.push(new Uint8Array(c.buffer), nm);
+      pos += 30 + nm.length + d.length;
+    });
+    var tam = 0;
+    central.forEach(function (x) { tam += x.length; });
+    var f = new DataView(new ArrayBuffer(22));
+    f.setUint32(0, 0x06054b50, true); f.setUint16(8, arquivos.length, true);
+    f.setUint16(10, arquivos.length, true); f.setUint32(12, tam, true); f.setUint32(16, pos, true);
+    return new Blob(partes.concat(central, [new Uint8Array(f.buffer)]),
+      { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+  var CONTROLE = new RegExp('[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f]', 'g');
+  function esc(s) {
+    return String(s).replace(CONTROLE, '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function letra(i) {
+    var s = '';
+    for (i += 1; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s;
+    return s;
+  }
+  function serialData(v) {
+    var m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v) || /^(\d{4})-(\d{2})-(\d{2})(T[\d:.]+Z?)?$/.exec(v);
+    if (!m) return null;
+    var a = m[3].length === 4 ? [m[3], m[2], m[1]] : [m[1], m[2], m[3]];
+    var t = Date.UTC(+a[0], +a[1] - 1, +a[2]);
+    return isNaN(t) ? null : (t - Date.UTC(1899, 11, 30)) / 86400000;
+  }
+  function celula(ref, v) {
+    if (v === null || v === undefined || v === '') return '<c r="' + ref + '" s="2"/>';
+    if (typeof v === 'number' && isFinite(v)) return '<c r="' + ref + '" s="2"><v>' + v + '</v></c>';
+    if (typeof v === 'boolean') v = v ? 'Sim' : 'Não';
+    v = String(v);
+    var d = serialData(v);
+    if (d !== null) return '<c r="' + ref + '" s="3"><v>' + d + '</v></c>';
+    return '<c r="' + ref + '" s="2" t="inlineStr"><is><t xml:space="preserve">' + esc(v) + '</t></is></c>';
+  }
+  function gerarXlsx(t) {
+    var cols = t.colunas, linhas = t.linhas, ult = letra(cols.length - 1), fimRef = ult + (linhas.length + 1);
+    var larg = cols.map(function (c, i) {
+      var max = Math.min(String(c.titulo || '').length, 18);
+      for (var r = 0; r < linhas.length && r < 400; r++) {
+        var v = linhas[r][i];
+        if (v !== null && v !== undefined) max = Math.max(max, String(v).length);
+      }
+      var lim = c.larguraMaxima || (c.quebra ? 60 : 40);
+      return Math.max(11, Math.min(lim, Math.round(max * 1.1 + 3)));
+    });
+    var x = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">',
+      '<dimension ref="A1:' + fimRef + '"/>',
+      '<sheetViews><sheetView workbookViewId="0" zoomScale="90" zoomScaleNormal="90"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews>',
+      '<sheetFormatPr defaultRowHeight="33.6" customHeight="1"/><cols>'];
+    larg.forEach(function (w, i) { x.push('<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'); });
+    x.push('</cols><sheetData><row r="1" ht="67.9" customHeight="1">');
+    cols.forEach(function (c, i) {
+      x.push('<c r="' + letra(i) + '1" s="1" t="inlineStr"><is><t xml:space="preserve">' + esc(c.titulo || '') + '</t></is></c>');
+    });
+    x.push('</row>');
+    linhas.forEach(function (l, r) {
+      x.push('<row r="' + (r + 2) + '" ht="33.6" customHeight="1">');
+      cols.forEach(function (_, i) { x.push(celula(letra(i) + (r + 2), l[i])); });
+      x.push('</row>');
+    });
+    x.push('</sheetData><autoFilter ref="A1:' + fimRef + '"/><pageMargins left="0.5" right="0.5" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>');
+    var ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"';
+    var cab = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+    var borda = '<border><left style="thin"><color indexed="64"/></left><right style="thin"><color indexed="64"/></right><top style="thin"><color indexed="64"/></top><bottom style="thin"><color indexed="64"/></bottom><diagonal/></border>';
+    var fonte = '<sz val="11"/><color rgb="FF000000"/><name val="Aptos Narrow"/><family val="2"/>';
+    var estilos = cab + '<styleSheet ' + ns + '>' +
+      '<fonts count="2"><font>' + fonte + '</font><font><b/>' + fonte + '</font></fonts>' +
+      '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FF3F5B70"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+      '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' + borda + '</borders>' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4">' +
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+      '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
+      '<xf numFmtId="14" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+      '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+    return zip([
+      ['[Content_Types].xml', cab + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+      ['_rels/.rels', cab + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+      ['xl/workbook.xml', cab + '<workbook ' + ns + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="PCS" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">PCS!$A$1:$' + ult + '$' + (linhas.length + 1) + '</definedName></definedNames></workbook>'],
+      ['xl/_rels/workbook.xml.rels', cab + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+      ['xl/styles.xml', estilos],
+      ['xl/worksheets/sheet1.xml', x.join('')]
+    ]);
   }
 
   function salvar(p) {
-    var url = URL.createObjectURL(new Blob(['﻿', p.csv], { type: 'text/csv;charset=utf-8' }));
+    var blob = p.tipo === 'xlsx' ? gerarXlsx(p.corpo)
+      : new Blob([BOM, p.corpo], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
     a.download = p.nome;
@@ -105,8 +237,11 @@ footer{margin-top:20px;padding-top:12px;border-top:1px solid var(--linha);font-s
     if (feito) return true;
     var p = interpretar(conteudo);
     if (p && !p.velho) {
+      try { salvar(p); } catch (_) {
+        mostrar('vazio', 'Não consegui montar o arquivo', 'Volte ao dashboard e clique de novo no botão de baixar.');
+        return false;
+      }
       feito = true;
-      salvar(p);
       mostrar('ok', 'Arquivo baixado', p.nome, 'Esta guia fecha sozinha.');
       fecharQuandoPuder();
       return true;
